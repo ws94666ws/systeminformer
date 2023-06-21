@@ -803,6 +803,20 @@ PhGetBaseNameChangeExtension(
     _In_ PPH_STRINGREF FileExtension
     );
 
+FORCEINLINE
+PPH_STRING
+PhGetBaseNameChangeExtensionZ(
+    _In_ PPH_STRINGREF FileName,
+    _In_ PWSTR FileExtension
+    )
+{
+    PH_STRINGREF string;
+
+    PhInitializeStringRef(&string, FileExtension);
+
+    return PhGetBaseNameChangeExtension(FileName, &string);
+}
+
 _Success_(return)
 PHLIBAPI
 BOOLEAN

@@ -15,6 +15,12 @@
 
 EXTERN_C_START
 
+//#define PH_SETTINGS_APPKEY 1
+//#define PH_SETTINGS_REGISTRY 1
+//#define PH_SETTINGS_JSON 1
+#define PH_SETTINGS_XML 1
+#define PH_SETTINGS_CONSTEXPR 1
+
 // begin_phapppub
 
 // These macros make sure the C strings can be seamlessly converted into
@@ -24,7 +30,7 @@ EXTERN_C_START
 { \
     static PH_STRINGREF name = PH_STRINGREF_INIT(Name); \
     static PH_STRINGREF defaultValue = PH_STRINGREF_INIT(DefaultValue); \
-    PhAddSetting(Type, &name, &defaultValue); \
+    PhAddSetting(Type, &name, &defaultValue, PhHashSettingNameZ(Name)); \
 }
 
 #define PhpAddStringSetting(A, B) ADD_SETTING_WRAPPER(StringSettingType, A, B)
@@ -39,11 +45,15 @@ typedef enum _PH_SETTING_TYPE
     IntegerPairSettingType,
     ScalableIntegerPairSettingType
 } PH_SETTING_TYPE, PPH_SETTING_TYPE;
+
 // end_phapppub
 
 typedef struct _PH_SETTING
 {
     PH_SETTING_TYPE Type;
+#ifdef PH_SETTINGS_CONSTEXPR
+    ULONG HashName;
+#endif
     PH_STRINGREF Name;
     PH_STRINGREF DefaultValue;
 
@@ -54,6 +64,8 @@ typedef struct _PH_SETTING
         PH_INTEGER_PAIR IntegerPair;
     } u;
 } PH_SETTING, *PPH_SETTING;
+
+static_assert(sizeof(PH_SETTING) == 0x30, "PH_SETTINGS structure invalid");
 
 PHLIBAPI
 VOID
@@ -86,6 +98,60 @@ VOID PhEnumSettings(
     _In_ PVOID Context
     );
 
+#ifdef PH_SETTINGS_CONSTEXPR
+#define PH_SETTINGS_NAME ULONG
+#else
+#define PH_SETTINGS_NAME PPH_STRINGREF
+#endif
+
+#ifdef PH_SETTINGS_CONSTEXPR
+FORCEINLINE
+ULONG
+NTAPI
+PhHashSettingNameZ(
+    _In_ PCWSTR Name
+    )
+{
+    ULONG hash = 0;
+    SIZE_T count;
+    PCWCHAR p;
+
+    count = wcslen(Name);
+    p = Name;
+
+    while (count-- != 0)
+    {
+        hash ^= (USHORT)*p++;
+        hash *= 0x1003F;
+    }
+
+    return hash;
+}
+
+FORCEINLINE
+ULONG
+NTAPI
+PhHashSettingName(
+    _In_ PPH_STRINGREF Name
+    )
+{
+    ULONG hash = 0;
+    SIZE_T count;
+    PCWCHAR p;
+
+    count = Name->Length / sizeof(WCHAR);
+    p = Name->Buffer;
+
+    while (count-- != 0)
+    {
+        hash ^= (USHORT)*p++;
+        hash *= 0x1003F;
+    }
+
+    return hash;
+}
+#endif
+
 // begin_phapppub
 
 _May_raise_
@@ -93,7 +159,7 @@ PHLIBAPI
 ULONG
 NTAPI
 PhGetIntegerStringRefSetting(
-    _In_ PPH_STRINGREF Name
+    _In_ PH_SETTINGS_NAME Name
     );
 
 _May_raise_
@@ -101,7 +167,7 @@ PHLIBAPI
 PH_INTEGER_PAIR
 NTAPI
 PhGetIntegerPairStringRefSetting(
-    _In_ PPH_STRINGREF Name
+    _In_ PH_SETTINGS_NAME Name
     );
 
 _May_raise_
@@ -109,7 +175,7 @@ PHLIBAPI
 PH_SCALABLE_INTEGER_PAIR
 NTAPI
 PhGetScalableIntegerPairStringRefSetting(
-    _In_ PPH_STRINGREF Name,
+    _In_ PH_SETTINGS_NAME Name,
     _In_ BOOLEAN ScaleToCurrent,
     _In_ LONG dpiValue
     );
@@ -119,7 +185,7 @@ PHLIBAPI
 PPH_STRING
 NTAPI
 PhGetStringRefSetting(
-    _In_ PPH_STRINGREF Name
+    _In_ PH_SETTINGS_NAME Name
     );
 
 _May_raise_
@@ -127,7 +193,7 @@ PHLIBAPI
 VOID
 NTAPI
 PhSetIntegerStringRefSetting(
-    _In_ PPH_STRINGREF Name,
+    _In_ PH_SETTINGS_NAME Name,
     _In_ ULONG Value
     );
 
@@ -136,7 +202,7 @@ PHLIBAPI
 VOID
 NTAPI
 PhSetIntegerPairStringRefSetting(
-    _In_ PPH_STRINGREF Name,
+    _In_ PH_SETTINGS_NAME Name,
     _In_ PH_INTEGER_PAIR Value
     );
 
@@ -145,7 +211,7 @@ PHLIBAPI
 VOID
 NTAPI
 PhSetScalableIntegerPairStringRefSetting(
-    _In_ PPH_STRINGREF Name,
+    _In_ PH_SETTINGS_NAME Name,
     _In_ PH_SCALABLE_INTEGER_PAIR Value
     );
 
@@ -154,7 +220,7 @@ PHLIBAPI
 VOID
 NTAPI
 PhSetScalableIntegerPairStringRefSetting2(
-    _In_ PPH_STRINGREF Name,
+    _In_ PH_SETTINGS_NAME Name,
     _In_ PH_INTEGER_PAIR Value,
     _In_ LONG dpiValue
     );
@@ -164,7 +230,7 @@ PHLIBAPI
 VOID
 NTAPI
 PhSetStringRefSetting(
-    _In_ PPH_STRINGREF Name,
+    _In_ PH_SETTINGS_NAME Name,
     _In_ PPH_STRINGREF Value
     );
 
@@ -175,11 +241,15 @@ PhGetIntegerSetting(
     _In_ PWSTR Name
     )
 {
+#ifdef PH_SETTINGS_CONSTEXPR
+    return PhGetIntegerStringRefSetting(PhHashSettingNameZ(Name));
+#else
     PH_STRINGREF name;
 
     PhInitializeStringRef(&name, Name);
 
     return PhGetIntegerStringRefSetting(&name);
+#endif
 }
 
 FORCEINLINE
@@ -189,11 +259,15 @@ PhGetIntegerPairSetting(
     _In_ PWSTR Name
     )
 {
+#ifdef PH_SETTINGS_CONSTEXPR
+    return PhGetIntegerPairStringRefSetting(PhHashSettingNameZ(Name));
+#else
     PH_STRINGREF name;
 
     PhInitializeStringRef(&name, Name);
 
     return PhGetIntegerPairStringRefSetting(&name);
+#endif
 }
 
 FORCEINLINE
@@ -205,11 +279,15 @@ PhGetScalableIntegerPairSetting(
     _In_ LONG dpiValue
     )
 {
+#ifdef PH_SETTINGS_CONSTEXPR
+    return PhGetScalableIntegerPairStringRefSetting(PhHashSettingNameZ(Name), ScaleToCurrent, dpiValue);
+#else
     PH_STRINGREF name;
 
     PhInitializeStringRef(&name, Name);
 
     return PhGetScalableIntegerPairStringRefSetting(&name, ScaleToCurrent, dpiValue);
+#endif
 }
 
 FORCEINLINE
@@ -219,11 +297,15 @@ PhGetStringSetting(
     _In_ PWSTR Name
     )
 {
+#ifdef PH_SETTINGS_CONSTEXPR
+    return PhGetStringRefSetting(PhHashSettingNameZ(Name));
+#else
     PH_STRINGREF name;
 
     PhInitializeStringRef(&name, Name);
 
     return PhGetStringRefSetting(&name);
+#endif
 }
 
 #define PhaGetStringSetting(Name) PH_AUTO_T(PH_STRING, PhGetStringSetting(Name)) // phapppub
@@ -254,11 +336,15 @@ PhSetIntegerSetting(
     _In_ ULONG Value
     )
 {
+#ifdef PH_SETTINGS_CONSTEXPR
+    PhSetIntegerStringRefSetting(PhHashSettingNameZ(Name), Value);
+#else
     PH_STRINGREF name;
 
     PhInitializeStringRef(&name, Name);
 
     PhSetIntegerStringRefSetting(&name, Value);
+#endif
 }
 
 FORCEINLINE
@@ -269,6 +355,13 @@ PhSetStringSetting(
     _In_ PWSTR Value
     )
 {
+#ifdef PH_SETTINGS_CONSTEXPR
+    PH_STRINGREF value;
+
+    PhInitializeStringRef(&value, Value);
+
+    PhSetStringRefSetting(PhHashSettingNameZ(Name), &value);
+#else
     PH_STRINGREF name;
     PH_STRINGREF value;
 
@@ -276,6 +369,7 @@ PhSetStringSetting(
     PhInitializeStringRef(&value, Value);
 
     PhSetStringRefSetting(&name, &value);
+#endif
 }
 
 FORCEINLINE
@@ -286,11 +380,15 @@ PhSetStringSetting2(
     _In_ PPH_STRINGREF Value
     )
 {
+#ifdef PH_SETTINGS_CONSTEXPR
+    PhSetStringRefSetting(PhHashSettingNameZ(Name), Value);
+#else
     PH_STRINGREF name;
 
     PhInitializeStringRef(&name, Name);
 
     PhSetStringRefSetting(&name, Value);
+#endif
 }
 
 FORCEINLINE
@@ -301,11 +399,15 @@ PhSetIntegerPairSetting(
     _In_ PH_INTEGER_PAIR Value
     )
 {
+#ifdef PH_SETTINGS_CONSTEXPR
+    PhSetIntegerPairStringRefSetting(PhHashSettingNameZ(Name), Value);
+#else
     PH_STRINGREF name;
 
     PhInitializeStringRef(&name, Name);
 
     PhSetIntegerPairStringRefSetting(&name, Value);
+#endif
 }
 
 FORCEINLINE
@@ -316,11 +418,15 @@ PhSetScalableIntegerPairSetting(
     _In_ PH_SCALABLE_INTEGER_PAIR Value
     )
 {
+#ifdef PH_SETTINGS_CONSTEXPR
+    PhSetScalableIntegerPairStringRefSetting(PhHashSettingNameZ(Name), Value);
+#else
     PH_STRINGREF name;
 
     PhInitializeStringRef(&name, Name);
 
     PhSetScalableIntegerPairStringRefSetting(&name, Value);
+#endif
 }
 
 FORCEINLINE
@@ -332,11 +438,15 @@ PhSetScalableIntegerPairSetting2(
     _In_ LONG dpiValue
     )
 {
+#ifdef PH_SETTINGS_CONSTEXPR
+    PhSetScalableIntegerPairStringRefSetting2(PhHashSettingNameZ(Name), Value, dpiValue);
+#else
     PH_STRINGREF name;
 
     PhInitializeStringRef(&name, Name);
 
     PhSetScalableIntegerPairStringRefSetting2(&name, Value, dpiValue);
+#endif
 }
 
 // end_phapppub
@@ -371,7 +481,8 @@ VOID PhResetSettings(
 VOID PhAddSetting(
     _In_ PH_SETTING_TYPE Type,
     _In_ PPH_STRINGREF Name,
-    _In_ PPH_STRINGREF DefaultValue
+    _In_ PPH_STRINGREF DefaultValue,
+    _In_ ULONG Hash
     );
 
 typedef struct _PH_SETTING_CREATE
@@ -380,6 +491,8 @@ typedef struct _PH_SETTING_CREATE
     PWSTR Name;
     PWSTR DefaultValue;
 } PH_SETTING_CREATE, *PPH_SETTING_CREATE;
+
+static_assert(sizeof(PH_SETTING_CREATE) == 0x18, "PH_SETTING_CREATE structure invalid");
 
 PHLIBAPI
 VOID
@@ -393,7 +506,7 @@ PHLIBAPI
 PPH_SETTING
 NTAPI
 PhGetSetting(
-    _In_ PPH_STRINGREF Name
+    _In_ PH_SETTINGS_NAME Name
     );
 
 VOID
